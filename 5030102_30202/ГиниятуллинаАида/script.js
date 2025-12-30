@@ -16,13 +16,11 @@ const CELL_CLASSES = {
     "Контур": "kontur"
 };
 
-let running = false;
 let intervalId = null;
 
 function renderMaze(data) {
     const table = $('#maze');
     table.empty();
-
     data.forEach((row, y) => {
         const tr = $('<tr>');
         row.forEach((cell, x) => {
@@ -31,11 +29,7 @@ function renderMaze(data) {
                 .text(CELL_LABELS[cell.type])
                 .data('x', x)
                 .data('y', y);
-
-            if (cell.robot) {
-                td.addClass('robot');
-            }
-
+            if (cell.robot) td.addClass('robot');
             tr.append(td);
         });
         table.append(tr);
@@ -47,13 +41,13 @@ function updateStatus(text) {
 }
 
 function loadMaze() {
-    $.get('/get_maze', function(data) {
-        renderMaze(data);
-        updateStatus("Готово");
+    $.get('/get_maze', data => {
+        renderMaze(data.maze);
+        updateStatus(data.status || "Готово");
     });
 }
 
-$(document).ready(function() {
+$(document).ready(() => {
     loadMaze();
 
     $('#maze').on('click contextmenu', 'td', function(e) {
@@ -61,46 +55,51 @@ $(document).ready(function() {
         const x = $(this).data('x');
         const y = $(this).data('y');
         const button = e.type === 'contextmenu' ? 'right' : 'left';
+        $.post('/click', JSON.stringify({x, y, button}), data => {
+            renderMaze(data.maze);
+            updateStatus(data.status || "Изменено");
+        });
+    });
 
-        $.post('/click', JSON.stringify({x: x, y: y, button: button}), function(data) {
-            renderMaze(data);
+    $('#step').click(() => {
+        $.get('/step', data => {
+            renderMaze(data.maze);
+            updateStatus(data.status || "Шаг выполнен");
         });
     });
 
     $('#run').click(function() {
-        $.post('/run', function(res) {
-            running = res.running;
-            if (running) {
-                $(this).text('Pause');
-                intervalId = setInterval(() => {
-                    $.get('/step', function(data) {
-                        renderMaze(data);
-                    });
-                }, 300);
-            } else {
-                $(this).text('Run');
-                clearInterval(intervalId);
-            }
+    if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+        $(this).text('Run');
+    } else {
+        $(this).text('Pause');
+        intervalId = setInterval(() => {
+            $.get('/step', data => {
+                renderMaze(data.maze);
+                updateStatus(data.status);
+                if (data.finished) {
+                    clearInterval(intervalId);
+                    intervalId = null;
+                    $('#run').text('Run');
+                }
+            });
+        }, 400);
+    }
+});
+
+    $('#reset').click(() => {
+        $.get('/reset', data => {
+            renderMaze(data.maze);
+            updateStatus(data.status);
         });
     });
 
-    $('#step').click(function() {
-        $.get('/step', function(data) {
-            renderMaze(data);
+    $('#demo').click(() => {
+        $.get('/demo', data => {
+            renderMaze(data.maze);
+            updateStatus(data.status);
         });
-    });
-
-    $('#reset').click(function() {
-        if (running) {
-            $('#run').click();
-        }
-        $.get('/reset', function(data) {
-            renderMaze(data);
-            updateStatus("Сброшено");
-        });
-    });
-
-    $('#demo').click(function() {
-        $('#reset').click();
     });
 });
